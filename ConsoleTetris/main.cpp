@@ -13,18 +13,33 @@ void gotoxy(short x, short y) {
 
 void drawSquare(short x, short y) {
 	gotoxy(x, y);
-	printf("бс");
+	printf("бсбсбс");
+	gotoxy(x, y+1);
+	printf("    бс");
 }
 void eraseSquare(short x, short y) {
 	gotoxy(x, y);
-	printf("  ");
+	printf("      ");
+	gotoxy(x, y + 1);
+	printf("      ");
 }
 
-void move(int dist_x, int dist_y) {
+void move(int dx, int dy) {
 	eraseSquare(x, y);
-	x += dist_x;
-	y += dist_y;
+	x += dx;
+	y += dy;
 	drawSquare(x, y);
+}
+
+void autoDrop(ULONGLONG& prev_time, int term) {
+	
+	ULONGLONG cur_time = GetTickCount64();
+
+	if (cur_time - prev_time > term)
+	{
+		move(0, 1);
+		prev_time = cur_time;
+	}
 }
 
 void hideCursor() {
@@ -40,7 +55,7 @@ void initGame() {
 	hideCursor();
 
 	x = 10;
-	y = 5;
+	y = 3;
 	move(x, y);
 }
 
@@ -52,7 +67,6 @@ void keyProcess()
 		case DOWN:
 			move(0, 1);
 			break;
-
 		case UP:
 			move(0, -1);
 			break;
@@ -69,7 +83,6 @@ void keyProcess()
 void run()
 {
 	ULONGLONG prev_time = 0;
-	ULONGLONG cur_time = 0;
 
 	initGame();
 
@@ -77,11 +90,7 @@ void run()
 	{
 		keyProcess();
 
-		/*cur_time = GetTickCount64();
-		if (cur_time - prev_time > 1000)
-		{
-			prev_time = cur_time;
-		}*/
+		autoDrop(prev_time, 1000);
 	}
 }
 
