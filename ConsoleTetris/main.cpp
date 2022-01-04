@@ -2,37 +2,71 @@
 #include <Windows.h>
 #include <conio.h>
 #include <algorithm>
+#include <time.h>
 
+struct Pos
+{
+	int row, col;
+	Pos()
+	{
+		row = col = 0;
+	};
+	Pos(int row_, int col_)
+	{
+		row = row_;
+		col = col_;
+	}
+} currentPos;
 
-int row = 0;
-int col = 0;
+const int MAX_BLOCK_LENGTH = 4;
+const int BLOCK_TYPE_COUNT = 7;
+const int MAX_ROW = 20;
+const int MAX_COL = 10;
 
-enum KEY { UP = 72, LEFT = 75, RIGHT = 77, DOWN = 80, P = 112, Q = 113 };
-enum OBJECT {EMPTY = 0};
+enum Key { UP = 72, LEFT = 75, RIGHT = 77, DOWN = 80, P = 112, Q = 113, SPACE = 32 };
+enum Speed { SPEED1 = 1000, SPEED10 = 10 };
+enum Object {EMPTY = 0, WALL = -1};
 
-int map[20][10] = { EMPTY };
+ULONGLONG prev_time;
 
-int block_T[3][3] = { {0,1,0},
-					 {1,1,1},
-					 {0,0,0} };
-int block_T_length = 3;
+int map[MAX_ROW+1][MAX_COL] = { EMPTY };
 
-int currentBlock[3][3] = { 0 };
+int block_T[MAX_BLOCK_LENGTH][MAX_BLOCK_LENGTH] = { {0,1,0,0},{1,1,1,0},{0,0,0,0},{0,0,0,0} };
+int block_I[MAX_BLOCK_LENGTH][MAX_BLOCK_LENGTH] = { {0,1,0,0},{0,1,0,0},{0,1,0,0},{0,1,0,0} };
+int block_O[MAX_BLOCK_LENGTH][MAX_BLOCK_LENGTH] = { {1,1,0,0},{1,1,0,0},{0,0,0,0},{0,0,0,0} };
+int block_J[MAX_BLOCK_LENGTH][MAX_BLOCK_LENGTH] = { {0,1,0,0},{0,1,0,0},{1,1,0,0},{0,0,0,0} };
+int block_L[MAX_BLOCK_LENGTH][MAX_BLOCK_LENGTH] = { {0,1,0,0},{0,1,0,0},{0,1,1,0},{0,0,0,0} };
+int block_S[MAX_BLOCK_LENGTH][MAX_BLOCK_LENGTH] = { {0,1,1,0},{1,1,0,0},{0,0,0,0},{0,0,0,0} };
+int block_Z[MAX_BLOCK_LENGTH][MAX_BLOCK_LENGTH] = { {1,1,0,0},{0,1,1,0},{0,0,0,0},{0,0,0,0} };
+
+int autoDrop_term = SPEED1;
+
+int currentBlock[MAX_BLOCK_LENGTH][MAX_BLOCK_LENGTH] = { 0 };
+int currentBlockLength;
 
 
 void gotoxy(short x, short y);
+
 void createBlock();
 void drawBlock();
 void eraseBlock();
-void moveBlock(int drow, int dcol);
+bool moveBlock(int r, int c);
+void copyBlock(int* src, int* dest);
+
 void moveDown();
 void moveLeft();
 void moveRight();
-bool isMovable(int drow, int dcol);
+
+bool isMovable(Pos pos);
 bool isRotatable();
+bool isLineFull(int row);
+
 void rotateBlock();
 void putBlock();
+
 void autoDrop(ULONGLONG& prev_time, int term);
+void redrawMap();
+
 void hideCursor();
 void initGame();
 void keyProcess();
@@ -50,59 +84,94 @@ void gotoxy(short x, short y) {
 
 void createBlock()
 {
-	std::copy(&block_T[0][0], &block_T[0][0]+9, &currentBlock[0][0]);
+	int v = rand() % BLOCK_TYPE_COUNT;
+	switch (v)
+	{
+	case 0:  copyBlock(*block_T, *currentBlock); currentBlockLength = 3; break;
+	case 1:  copyBlock(*block_I, *currentBlock); currentBlockLength = 4; break;
+	case 2:  copyBlock(*block_O, *currentBlock); currentBlockLength = 2; break;
+	case 3:  copyBlock(*block_J, *currentBlock); currentBlockLength = 3; break;
+	case 4:  copyBlock(*block_L, *currentBlock); currentBlockLength = 3; break;
+	case 5:  copyBlock(*block_S, *currentBlock); currentBlockLength = 3; break;
+	default: copyBlock(*block_Z, *currentBlock); currentBlockLength = 3; break;
+	}
 }
 
 void drawBlock() {
-	for (int i = 0; i < 3; i++)
+	for (int i = 0; i < currentBlockLength; i++)
 	{
-		for (int j = 0; j < 3; j++)
+		for (int j = 0; j < currentBlockLength; j++)
 		{
 			if (currentBlock[i][j] == 1)
 			{
-				gotoxy((col + j) * 2, row + i);
+				gotoxy((currentPos.col + j) * 2, currentPos.row + i);
 				printf("■");
 			}
 		}
 	}
 }
 void eraseBlock() {
-	for (int i = 0; i < 3; i++)
+	for (int i = 0; i < currentBlockLength; i++)
 	{
-		for (int j = 0; j < 3; j++)
+		for (int j = 0; j < currentBlockLength; j++)
 		{
 			if (currentBlock[i][j] == 1)
 			{
-				gotoxy((col + j) * 2, row + i);
+				gotoxy((currentPos.col + j) * 2, currentPos.row + i);
 				printf("  ");
 			}
 		}
 	}
 }
 
-void moveBlock(int drow, int dcol)
+bool moveBlock(int r, int c)
 {
-	if (isMovable(drow, dcol) == false) {
-		if (drow == 1 && dcol == 0)
-		{
-			putBlock();
-			row = 0;
-			col = 3;
-			createBlock();
-			drawBlock();
-		}
-		return;
-	}
+	Pos newPos = Pos(currentPos.row + r, currentPos.col + c);
+
+	if (isMovable(newPos) == false)
+		return false;
 
 	eraseBlock();
-	row += drow;
-	col += dcol;
+	currentPos = newPos;
 	drawBlock();
+	return true;
+}
+
+void copyBlock(int* src, int* dest)
+{
+	std::copy(src, src + (MAX_BLOCK_LENGTH * MAX_BLOCK_LENGTH), dest);
 }
 
 void moveDown()
 {
-	moveBlock(1, 0);
+	prev_time = GetTickCount64(); // 블럭 하강 시, 프레임 카운트 무조건 초기화
+
+	// 블럭이 끝까지 내려왔을 경우
+	if (moveBlock(1, 0) == false)
+	{
+		putBlock(); // 블럭을 맵에 투사한다.
+
+		// 가득 채워 진 라인이 있는지 검사
+		for (int i = 0; i < MAX_ROW; i++)
+		{
+			if (isLineFull(i) == true)
+			{
+				for (int x = i; x > 0; x--)
+				{
+					for (int y = 0; y < MAX_COL; y++)
+					{
+						map[x][y] = map[x - 1][y];
+					}
+				}
+				redrawMap();
+			}
+		}
+
+		autoDrop_term = SPEED1;
+		currentPos = Pos(0, 3);
+		createBlock();
+		drawBlock();
+	}
 }
 
 void moveLeft()
@@ -115,15 +184,15 @@ void moveRight()
 	moveBlock(0, 1);
 }
 
-bool isMovable(int drow, int dcol)
+bool isMovable(Pos pos)
 {
-	for (int i = 0; i < 3; i++)
+	for (int i = 0; i < currentBlockLength; i++)
 	{
-		for (int j = 0; j < 3; j++)
+		for (int j = 0; j < currentBlockLength; j++)
 		{
 			if (currentBlock[i][j] == 1 &&
-				((col + j + dcol < 0 || col + j + dcol > 9) ||
-					(map[row+i+drow][col+j+dcol] != EMPTY)))
+				((pos.col + j < 0 || pos.col + j > MAX_COL - 1) ||
+					(map[pos.row+i][pos.col+j] != EMPTY)))
 				return false;
 		}
 	}
@@ -132,14 +201,24 @@ bool isMovable(int drow, int dcol)
 
 bool isRotatable()
 {
-	if (col < 0 || col + block_T_length - 1 > 9)
+	if (currentPos.col < 0 || currentPos.col + currentBlockLength - 1 > MAX_COL - 1)
 		return false;
 
-	for (int i = 0; i < block_T_length; i++) {
-		for (int j = 0; j < block_T_length; j++) {
-			if (map[row + i][col + j] != EMPTY)
+	for (int i = 0; i < currentBlockLength; i++) {
+		for (int j = 0; j < currentBlockLength; j++) {
+			if (map[currentPos.row + i][currentPos.col + j] != EMPTY)
 				return false;
 		}
+	}
+	return true;
+}
+
+bool isLineFull(int row)
+{
+	for (int j = 0; j < MAX_COL; j++)
+	{
+		if (map[row][j] == EMPTY)
+			return false;
 	}
 	return true;
 }
@@ -149,14 +228,15 @@ void rotateBlock()
 	if (isRotatable() == false)
 		return;
 
-	int tempBlock[3][3] = { 0 };
-	std::copy(&currentBlock[0][0], &currentBlock[0][0] + 9, &tempBlock[0][0]);
+	int tempBlock[MAX_BLOCK_LENGTH][MAX_BLOCK_LENGTH] = { 0 };
+	copyBlock(*currentBlock, *tempBlock);
+
 	eraseBlock();
-	for (int i = 0; i < 3; i++)
+	for (int i = 0; i < currentBlockLength; i++)
 	{
-		for (int j = 0; j < 3; j++)
+		for (int j = 0; j < currentBlockLength; j++)
 		{
-			currentBlock[i][j] = tempBlock[2-j][i];
+			currentBlock[i][j] = tempBlock[currentBlockLength-1-j][i];
 		}
 	}
 	drawBlock();
@@ -164,10 +244,10 @@ void rotateBlock()
 
 void putBlock()
 {
-	for (int i = 0; i < 3; i++) {
-		for (int j = 0; j < 3; j++) {
+	for (int i = 0; i < currentBlockLength; i++) {
+		for (int j = 0; j < currentBlockLength; j++) {
 			if (currentBlock[i][j] == 1)
-				map[row + i][col + j] = currentBlock[i][j];
+				map[currentPos.row + i][currentPos.col + j] = currentBlock[i][j];
 		}
 	}
 }
@@ -178,10 +258,31 @@ void autoDrop(ULONGLONG& prev_time, int term) {
 
 	if (cur_time - prev_time > term)
 	{
-		moveBlock(1, 0);
+		moveDown();
 		prev_time = cur_time;
 	}
 }
+
+void redrawMap()
+{
+	for (int i = 0; i < MAX_ROW; i++)
+	{
+		for (int j = 0; j < MAX_COL; j++)
+		{
+			if (map[i][j] == 0)
+			{
+				gotoxy(j * 2, i);
+				printf("  ");
+			}
+			else if (map[i][j] == 1)
+			{
+				gotoxy(j * 2, i);
+				printf("■");
+			}
+		}
+	}
+}
+
 
 void hideCursor() {
 	CONSOLE_CURSOR_INFO cursorInfo;
@@ -191,13 +292,18 @@ void hideCursor() {
 	SetConsoleCursorInfo(GetStdHandle(STD_OUTPUT_HANDLE), &cursorInfo);
 }
 
-void initGame() {
+void initGame()
+{
+	srand((unsigned int)time(0));
+	prev_time = GetTickCount64();
+	autoDrop_term = SPEED1;
 
 	hideCursor();
 	createBlock();
 	moveBlock(0, 3);
-	for (int i = 0; i < 10; i++)
-		map[19][i] = 1;
+
+	for (int i = 0; i < MAX_COL; i++)
+		map[MAX_ROW][i] = WALL;
 }
 
 void keyProcess()
@@ -217,19 +323,20 @@ void keyProcess()
 		case RIGHT:
 			moveRight();
 			break;
+		case SPACE:
+			autoDrop_term = SPEED10;
+			break;
 		}
 	}
 }
 
 void run()
 {
-	ULONGLONG prev_time = GetTickCount64();
-
 	initGame();
 
 	while (1)
 	{
 		keyProcess();
-		autoDrop(prev_time, 1000);
+		autoDrop(prev_time, autoDrop_term);
 	}
 }
