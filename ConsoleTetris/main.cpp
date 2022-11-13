@@ -18,16 +18,25 @@ struct Pos
 	}
 } currentPos;
 
+const int WALL_START_X = 50;
+const int WALL_START_Y = 4;
+
+const int WALL_LENGTH_X = 2;
+const int WALL_LENGTH_Y = 1;
+
 const int MAX_BLOCK_LENGTH = 4;
 const int BLOCK_TYPE_COUNT = 7;
 const int MAX_ROW = 20;
 const int MAX_COL = 10;
 
 enum Key { UP = 72, LEFT = 75, RIGHT = 77, DOWN = 80, P = 112, Q = 113, SPACE = 32 };
-enum Speed { SPEED1 = 1000, SPEED10 = 10 };
+enum Speed { SPEED1 = 1000, SPEED2 = 500, MAX_SPEED = 10 };
 enum Object {EMPTY = 0, WALL = -1};
+enum Color {BLUE = 1, GREEN = 2, CYAN = 3, RED = 4, MAGENTA = 5, GOLD = 6, DEFAULT = 7, SKYBLUE = 11, YELLOW = 14, WHITE = 15};
 
 ULONGLONG prev_time;
+
+bool gameIsRunning;
 
 int map[MAX_ROW+1][MAX_COL] = { EMPTY };
 
@@ -39,19 +48,22 @@ int block_L[MAX_BLOCK_LENGTH][MAX_BLOCK_LENGTH] = { {0,1,0,0},{0,1,0,0},{0,1,1,0
 int block_S[MAX_BLOCK_LENGTH][MAX_BLOCK_LENGTH] = { {0,1,1,0},{1,1,0,0},{0,0,0,0},{0,0,0,0} };
 int block_Z[MAX_BLOCK_LENGTH][MAX_BLOCK_LENGTH] = { {1,1,0,0},{0,1,1,0},{0,0,0,0},{0,0,0,0} };
 
-int autoDrop_term = SPEED1;
+int autoDropSpeed;
 
 int currentBlock[MAX_BLOCK_LENGTH][MAX_BLOCK_LENGTH] = { 0 };
 int currentBlockLength;
 
-
 void gotoxy(short x, short y);
+void gotoxyInside(short x, short y);
 
-void createBlock();
+void createNewBlock();
 void drawBlock();
 void eraseBlock();
 bool moveBlock(int r, int c);
 void copyBlock(int* src, int* dest);
+
+void setTextColor(int color);
+void setBlockColor(int color);
 
 void moveDown();
 void moveLeft();
@@ -62,13 +74,15 @@ bool isRotatable();
 bool isLineFull(int row);
 
 void rotateBlock();
-void putBlock();
+bool putBlock();
 
-void autoDrop(ULONGLONG& prev_time, int term);
+void autoDrop();
 void redrawMap();
 
 void hideCursor();
 void initGame();
+void gameOver();
+void drawBackground();
 void keyProcess();
 void run();
 
@@ -79,22 +93,29 @@ int main()
 
 
 void gotoxy(short x, short y) {
+	x += WALL_START_X;
+	y += WALL_START_Y;
 	SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), { x, y });
 }
+void gotoxyInside(short x, short y) {
+	gotoxy(x + WALL_LENGTH_X, y + WALL_LENGTH_Y);
+}
 
-void createBlock()
+void createNewBlock()
 {
 	int v = rand() % BLOCK_TYPE_COUNT;
 	switch (v)
 	{
-	case 0:  copyBlock(*block_T, *currentBlock); currentBlockLength = 3; break;
-	case 1:  copyBlock(*block_I, *currentBlock); currentBlockLength = 4; break;
-	case 2:  copyBlock(*block_O, *currentBlock); currentBlockLength = 2; break;
-	case 3:  copyBlock(*block_J, *currentBlock); currentBlockLength = 3; break;
-	case 4:  copyBlock(*block_L, *currentBlock); currentBlockLength = 3; break;
-	case 5:  copyBlock(*block_S, *currentBlock); currentBlockLength = 3; break;
-	default: copyBlock(*block_Z, *currentBlock); currentBlockLength = 3; break;
+	case 0:  copyBlock(*block_T, *currentBlock); currentBlockLength = 3; setBlockColor(MAGENTA);  break;
+	case 1:  copyBlock(*block_I, *currentBlock); currentBlockLength = 4; setBlockColor(CYAN);     break;
+	case 2:  copyBlock(*block_O, *currentBlock); currentBlockLength = 2; setBlockColor(YELLOW);   break;
+	case 3:  copyBlock(*block_J, *currentBlock); currentBlockLength = 3; setBlockColor(BLUE);     break;
+	case 4:  copyBlock(*block_L, *currentBlock); currentBlockLength = 3; setBlockColor(GOLD);     break;
+	case 5:  copyBlock(*block_S, *currentBlock); currentBlockLength = 3; setBlockColor(GREEN);    break;
+	default: copyBlock(*block_Z, *currentBlock); currentBlockLength = 3; setBlockColor(RED);      break;
 	}
+	currentPos = Pos(0, MAX_COL / 2 - 1);
+	drawBlock();
 }
 
 void drawBlock() {
@@ -102,9 +123,9 @@ void drawBlock() {
 	{
 		for (int j = 0; j < currentBlockLength; j++)
 		{
-			if (currentBlock[i][j] == 1)
+			if (currentBlock[i][j] != EMPTY)
 			{
-				gotoxy((currentPos.col + j) * 2, currentPos.row + i);
+				gotoxyInside((currentPos.col + j) * 2, currentPos.row + i);
 				printf("■");
 			}
 		}
@@ -115,9 +136,9 @@ void eraseBlock() {
 	{
 		for (int j = 0; j < currentBlockLength; j++)
 		{
-			if (currentBlock[i][j] == 1)
+			if (currentBlock[i][j] != EMPTY)
 			{
-				gotoxy((currentPos.col + j) * 2, currentPos.row + i);
+				gotoxyInside((currentPos.col + j) * 2, currentPos.row + i);
 				printf("  ");
 			}
 		}
@@ -142,14 +163,35 @@ void copyBlock(int* src, int* dest)
 	std::copy(src, src + (MAX_BLOCK_LENGTH * MAX_BLOCK_LENGTH), dest);
 }
 
+void setTextColor(int color)
+{
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), color);
+}
+
+void setBlockColor(int color)
+{
+	for (int i = 0; i < MAX_BLOCK_LENGTH; i++)
+	{
+		for (int j = 0; j < MAX_BLOCK_LENGTH; j++)
+		{
+			currentBlock[i][j] = currentBlock[i][j] * color;
+		}
+	}
+	setTextColor(color);
+}
+
 void moveDown()
 {
 	prev_time = GetTickCount64(); // 블럭 하강 시, 프레임 카운트 무조건 초기화
 
+	bool blockReachedTheEnd = !moveBlock(1, 0); // 블럭을 한 칸 하강한다.
+
 	// 블럭이 끝까지 내려왔을 경우
-	if (moveBlock(1, 0) == false)
+	if (blockReachedTheEnd)
 	{
-		putBlock(); // 블럭을 맵에 투사한다.
+		bool gameIsOver = !putBlock(); // 블럭을 맵에 놓는다.
+		if (gameIsOver)
+			return;
 
 		// 가득 채워 진 라인이 있는지 검사
 		for (int i = 0; i < MAX_ROW; i++)
@@ -167,10 +209,8 @@ void moveDown()
 			}
 		}
 
-		autoDrop_term = SPEED1;
-		currentPos = Pos(0, 3);
-		createBlock();
-		drawBlock();
+		autoDropSpeed = SPEED2;
+		createNewBlock();
 	}
 }
 
@@ -190,7 +230,7 @@ bool isMovable(Pos pos)
 	{
 		for (int j = 0; j < currentBlockLength; j++)
 		{
-			if (currentBlock[i][j] == 1 &&
+			if (currentBlock[i][j] != EMPTY &&
 				((pos.col + j < 0 || pos.col + j > MAX_COL - 1) ||
 					(map[pos.row+i][pos.col+j] != EMPTY)))
 				return false;
@@ -242,21 +282,31 @@ void rotateBlock()
 	drawBlock();
 }
 
-void putBlock()
+bool putBlock()
 {
 	for (int i = 0; i < currentBlockLength; i++) {
 		for (int j = 0; j < currentBlockLength; j++) {
-			if (currentBlock[i][j] == 1)
-				map[currentPos.row + i][currentPos.col + j] = currentBlock[i][j];
+			if (currentBlock[i][j] != EMPTY) {
+				if (map[currentPos.row + i][currentPos.col + j] != EMPTY) {
+					// 놓을 자리에 다른 블럭이 있다면 게임 오버
+					gameOver();
+					return false;
+				}
+				else
+				{
+					map[currentPos.row + i][currentPos.col + j] = currentBlock[i][j];
+				}
+			}
 		}
 	}
+	return true;
 }
 
-void autoDrop(ULONGLONG& prev_time, int term) {
+void autoDrop() {
 
 	ULONGLONG cur_time = GetTickCount64();
 
-	if (cur_time - prev_time > term)
+	if (cur_time - prev_time > autoDropSpeed)
 	{
 		moveDown();
 		prev_time = cur_time;
@@ -269,14 +319,15 @@ void redrawMap()
 	{
 		for (int j = 0; j < MAX_COL; j++)
 		{
-			if (map[i][j] == 0)
+			gotoxyInside(j * 2, i);
+			setTextColor(map[i][j]);
+
+			if (map[i][j] == EMPTY)
 			{
-				gotoxy(j * 2, i);
 				printf("  ");
 			}
-			else if (map[i][j] == 1)
+			else
 			{
-				gotoxy(j * 2, i);
 				printf("■");
 			}
 		}
@@ -296,14 +347,81 @@ void initGame()
 {
 	srand((unsigned int)time(0));
 	prev_time = GetTickCount64();
-	autoDrop_term = SPEED1;
+	autoDropSpeed = SPEED2;
 
+	drawBackground();
 	hideCursor();
-	createBlock();
-	moveBlock(0, 3);
+	createNewBlock();
+	gameIsRunning = true;
 
 	for (int i = 0; i < MAX_COL; i++)
 		map[MAX_ROW][i] = WALL;
+}
+
+void gameOver()
+{
+	gameIsRunning = false;
+	gotoxy(MAX_COL - 3, MAX_ROW / 2);
+	setTextColor(WHITE);
+	printf(" Game Over"); // G가 지워지는 버그 때문에 앞에 한 칸 공백 추가
+	SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), { 0, 0 });
+}
+
+void drawBackground()
+{
+	setTextColor(WHITE);
+
+	// 벽 그리기 (가로)
+	for (int i = 0; i < MAX_COL + 2; i++)
+	{
+		gotoxy((short)(i * 2), 0);
+		printf("▨");
+		gotoxy((short)(i * 2), MAX_ROW + 1);
+		printf("▨");
+	}
+
+	// 벽 그리기 (세로)
+	for (int i = 0; i < MAX_ROW + 1; i++)
+	{
+		gotoxy(0, (short)i);
+		printf("▨\n");
+		gotoxy((MAX_COL * 2) + 2, (short)i);
+		printf("▨\n");
+	}
+
+	// 현황판 벽 그리기 (가로)
+	for (int i = 0; i < 9; i++)
+	{
+		gotoxy((short)(i * 2 - 18), 0);
+		printf("▧");
+		gotoxy((short)(i * 2 - 18), 7);
+		printf("▧");
+		gotoxy((short)(i * 2 - 18), 13);
+		printf("▧");
+		gotoxy((short)(i * 2 - 18), 21);
+		printf("▧");
+	}
+
+	// 현황판 벽 그리기 (세로)
+	for (int i = 0; i < 21; i++)
+	{
+		gotoxy(-18, (short)i);
+		printf("▧");
+		gotoxy(-2, (short)i);
+		printf("▧");
+	}
+
+	setTextColor(SKYBLUE);
+	gotoxy(-15, 15);
+	printf("← : 왼쪽");
+	gotoxy(-15, 16);
+	printf("→ : 오른쪽");
+	gotoxy(-15, 17);
+	printf("↑ : 회전");
+	gotoxy(-15, 18);
+	printf("↓ : 밑으로");
+	gotoxy(-15, 19);
+	printf("SPACE : 낙하");
 }
 
 void keyProcess()
@@ -324,7 +442,10 @@ void keyProcess()
 			moveRight();
 			break;
 		case SPACE:
-			autoDrop_term = SPEED10;
+			autoDropSpeed = MAX_SPEED;
+			break;
+		case Q:
+			gameOver();
 			break;
 		}
 	}
@@ -334,9 +455,9 @@ void run()
 {
 	initGame();
 
-	while (1)
+	while (gameIsRunning)
 	{
 		keyProcess();
-		autoDrop(prev_time, autoDrop_term);
+		autoDrop();
 	}
 }
