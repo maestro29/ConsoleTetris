@@ -664,6 +664,6 @@ void run()
 	{
 		keyProcess();
 		autoDrop();
-		Sleep(1);	// CPU 점유율 상승을 방지하기 위하여 추가
+		Sleep(1);	// CPU 점유율 상승을 방지하기 위하여 추가 
 	}
 }
