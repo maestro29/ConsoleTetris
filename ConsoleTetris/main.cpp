@@ -299,7 +299,6 @@ void moveDown()
 		redrawMap();
 		updateScore();
 
-		//autoDropSpeed = SPEED1;	// 하드드롭(낙하)으로 인해 최대치가 된 속도를 원복한다.
 		updateCurrentBlock();	// 현재 블럭을 다음 블럭으로 교체
 		createNextBlock();	// 다음 블럭 생성
 	}
