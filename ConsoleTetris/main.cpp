@@ -13,11 +13,12 @@ const int WALL_LENGTH_Y = 1;	// 벽 세로 길이
 const int MAX_BLOCK_LENGTH = 4;	// 블럭 최대 길이
 const int BLOCK_TYPE_COUNT = 7;	// 블럭 종류 개수
 const int MAX_ROW = 20;			// 맵 크기(행 개수)
-const int MAX_COL = 5;			// 맵 크기(열 개수)
+const int MAX_COL = 10;			// 맵 크기(열 개수)
 
 enum Key { UP = 72, LEFT = 75, RIGHT = 77, DOWN = 80, P = 112, Q = 113, SPACE = 32,		// 키보드
 			W = 119, A = 97, S = 115, D = 100, X = 120};
-enum Speed { SPEED1 = 1000, SPEED2 = 500, MAX_SPEED = 10 };								// 스피드
+enum Speed { SPEED1 = 1000, SPEED2 = 750, SPEED3 = 500, SPEED4 = 250, SPEED5 = 125,		// 스피드
+			 MAX_SPEED = 10 };
 enum Object { EMPTY = 0, WALL = -1 };													// 물체
 enum Color {
 	BLUE = 1, GREEN = 2, CYAN = 3, RED = 4, MAGENTA = 5, GOLD = 6, DEFAULT = 7,			// 색상
@@ -298,7 +299,7 @@ void moveDown()
 		redrawMap();
 		updateScore();
 
-		autoDropSpeed = SPEED1;	// 하드드롭(낙하)으로 인해 최대치가 된 속도를 원복한다.
+		//autoDropSpeed = SPEED1;	// 하드드롭(낙하)으로 인해 최대치가 된 속도를 원복한다.
 		updateCurrentBlock();	// 현재 블럭을 다음 블럭으로 교체
 		createNextBlock();	// 다음 블럭 생성
 	}
@@ -551,8 +552,6 @@ void drawBackground()
 	printf("↑ : 회전");
 	gotoXY(-13, 15);
 	printf("↓ : 밑으로");
-	gotoXY(-13, 17);
-	printf("SPACE : 낙하");
 	gotoXY(-13, 19);
 	printf("Q : 종료");
 }
@@ -561,6 +560,7 @@ void updateScore()
 {
 	int score = 0;
 
+	// 라인 클리어 개수 표시
 	gotoXY((MAX_COL + 3) * 2 - 1, 13);
 	if (lineClearAtOnce > 0)
 	{
@@ -578,6 +578,7 @@ void updateScore()
 		printf("            ");
 	}
 
+	// 콤보 개수 표시
 	gotoXY((MAX_COL + 3) * 2, 15);
 	if (currentCombo > 0)
 	{
@@ -595,6 +596,7 @@ void updateScore()
 		printf("          ");
 	}
 
+	// 획득한 점수 표시
 	setTextColor(LIGHTGREEN);
 	gotoXY((MAX_COL + 4) * 2, 11);
 	printf("          ");
@@ -604,15 +606,18 @@ void updateScore()
 		printf("+%d점", score);
 	}
 
-	setTextColor(LIGHTGREEN);
-	gotoXY(-11, 2);
-	printf("STAGE 1");
-
+	// 총 점수 표시
 	totalScore += score;
 	setTextColor(YELLOW);
 	gotoXY(-11, 4);
 	printf("%d 점", totalScore);
 
+	// 스테이지 표시
+	int stage = 1;
+	autoDropSpeed = SPEED1;
+
+
+	// 최대 콤보 개수 표시
 	gotoXY((MAX_COL + 3) * 2 - 1, 18);
 	switch (maxCombo)
 	{
@@ -643,9 +648,6 @@ void keyProcess()
 			break;
 		case RIGHT:
 			moveRight();
-			break;
-		case SPACE:
-			autoDropSpeed = MAX_SPEED;
 			break;
 		case Q:
 			gameOver();
